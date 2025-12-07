@@ -1,0 +1,91 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build_and_test:
+    name: Build & Test (Python)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv (Python Package Manager)
+        run: pip install uv
+
+      - name: Install Project Dependencies (via uv)
+        # This step handles core project dependencies from pyproject.toml or requirements.txt.
+        # If no such file exists, this step will be skipped or result in no installations.
+        run: |
+          if [ -f requirements.txt ]; then
+            uv pip install -r requirements.txt
+          fi
+          if [ -f pyproject.toml ]; then
+            uv sync
+          fi
+
+      - name: Install Linting and Testing Tools (via uv)
+        # Explicitly install development tools as specified in AGENTS.md for Python projects.
+        run: uv pip install ruff pytest pytest-cov
+
+      - name: Check Code Formatting with Ruff
+        run: ruff format --check .
+
+      - name: Lint Code with Ruff
+        run: ruff check .
+
+      - name: Run Tests with Pytest
+        run: pytest --cov=./ --cov-report=xml
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: chirag127/Apex-Software-Engineering-Principles-Reference-Guide
+          name: codecov-umbrella
+          flags: unittests
+          fail_ci_if_error: true
+          verbose: true
+
+  markdown_checks:
+    name: Markdown Lint and Link Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js for Markdown Tools
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install markdownlint-cli
+        run: npm install -g markdownlint-cli
+
+      - name: Run Markdown Lint
+        run: markdownlint --config .markdownlint.jsonc .
+        continue-on-error: true
+
+      - name: Install markdown-link-check
+        run: npm install -g markdown-link-check
+
+      - name: Run Markdown Link Check
+        run: markdown-link-check -c .mlc.json .
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
